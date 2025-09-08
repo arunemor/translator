@@ -1,8 +1,9 @@
 import sys
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLineEdit, QComboBox, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
+    QApplication, QWidget, QLineEdit, QComboBox, QVBoxLayout, 
+    QSystemTrayIcon, QMenu, QAction
 )
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt, QTimer, QPoint
 from googletrans import Translator
 import pyperclip
@@ -10,6 +11,7 @@ import pyperclip
 class PopupTranslator(QWidget):
     def __init__(self):
         super().__init__()
+        # Window settings
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setFixedSize(220, 70)
         self.setWindowTitle("Translator")
@@ -83,12 +85,17 @@ class PopupTranslator(QWidget):
         self.clipboard_timer.stop()
         self.hide()
 
-# Main
+
+# Main application
 app = QApplication(sys.argv)
 app.setQuitOnLastWindowClosed(False)
 
-# Create system tray
-tray_icon = QSystemTrayIcon(QIcon.fromTheme("preferences-desktop-locale"), app)
+# Create a simple built-in icon (avoids missing icon warning)
+pixmap = QPixmap(16,16)
+pixmap.fill(Qt.blue)  # simple blue square
+icon = QIcon(pixmap)
+
+tray_icon = QSystemTrayIcon(icon, app)
 menu = QMenu()
 
 translator_popup = PopupTranslator()
