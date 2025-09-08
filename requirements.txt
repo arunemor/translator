@@ -1,0 +1,3 @@
+PyQt5==5.15.10
+googletrans==4.0.0-rc1
+pyperclip==1.8.2
