@@ -1,4 +1,3 @@
 PyQt5
-googletrans==4.0.0-rc1
+deep-translator
 pyperclip
-

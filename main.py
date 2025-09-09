@@ -1,235 +1,176 @@
-# import sys
-# from PyQt5.QtWidgets import (
-#     QApplication, QWidget, QTextEdit, QComboBox, 
-#     QVBoxLayout, QSystemTrayIcon, QMenu, QAction
-# )
-# from PyQt5.QtGui import QIcon, QFont, QPixmap
-# from PyQt5.QtCore import Qt, QTimer
-# from googletrans import Translator
-# import pyperclip
-
-# class RobotoTranslator(QWidget):
-#     def __init__(self):
-#         super().__init__()
-#         # Window settings
-#         self.setWindowFlags(Qt.WindowStaysOnTopHint)
-#         self.setMinimumSize(300, 150)
-#         self.setWindowTitle("Mini Translator")
-
-#         self.translator = Translator()
-#         self.last_clipboard = ""
-
-#         # Clipboard timer
-#         self.clipboard_timer = QTimer()
-#         self.clipboard_timer.timeout.connect(self.check_clipboard)
-
-#         # Roboto font
-#         self.roboto_font = QFont("Roboto", 10)
-
-#         # Language selection
-#         self.lang_combo = QComboBox()
-#         self.lang_combo.addItems(["en", "hi", "fr", "de", "es", "zh-cn", "ja"])
-#         self.lang_combo.setCurrentText("hi")
-#         self.lang_combo.setFont(self.roboto_font)
-
-#         # Output text
-#         self.output_text = QTextEdit()
-#         self.output_text.setReadOnly(True)
-#         self.output_text.setFont(self.roboto_font)
-#         self.output_text.setStyleSheet(
-#             "background-color: #f0f0f0; border: 1px solid #ccc; padding: 4px;"
-#         )
-
-#         # Layout
-#         layout = QVBoxLayout()
-#         layout.setContentsMargins(5,5,5,5)
-#         layout.addWidget(self.lang_combo)
-#         layout.addWidget(self.output_text)
-#         self.setLayout(layout)
-
-#     # Clipboard monitor
-#     def translate_text(self, text):
-#         lang = self.lang_combo.currentText()
-#         try:
-#             translated = self.translator.translate(text, dest=lang)
-#             self.output_text.setPlainText(translated.text)
-#         except Exception as e:
-#             self.output_text.setPlainText(f"Error: {e}")
-
-#     def check_clipboard(self):
-#         try:
-#             clipboard_text = pyperclip.paste().strip()
-#         except:
-#             return
-#         if clipboard_text and clipboard_text != self.last_clipboard:
-#             self.last_clipboard = clipboard_text
-#             self.translate_text(clipboard_text)
-
-    
-#     # Show popup and start clipboard monitoring
-#     def popup(self):
-#         self.show()
-#         self.clipboard_timer.start(500)
-
-#     # Hide popup and stop monitoring
-#     def hide_popup(self):
-#         self.clipboard_timer.stop()
-#         self.hide()
-
-
-# # Main
-# app = QApplication(sys.argv)
-# app.setQuitOnLastWindowClosed(False)
-
-# # System tray icon
-# pixmap = QPixmap(32,32)
-# pixmap.fill(Qt.transparent)  # transparent background
-# icon = QIcon("translator.png")  # small attractive PNG icon
-# if icon.isNull():
-#     pixmap.fill(Qt.blue)
-#     icon = QIcon(pixmap)
-
-# tray_icon = QSystemTrayIcon(icon, app)
-# menu = QMenu()
-
-# translator_popup = RobotoTranslator()
-
-# # Tray menu actions
-# show_action = QAction("Open Translator")
-# show_action.triggered.connect(translator_popup.popup)
-# menu.addAction(show_action)
-
-# hide_action = QAction("Hide Translator")
-# hide_action.triggered.connect(translator_popup.hide_popup)
-# menu.addAction(hide_action)
-
-# quit_action = QAction("Quit")
-# quit_action.triggered.connect(app.quit)
-# menu.addAction(quit_action)
-
-# tray_icon.setContextMenu(menu)
-# tray_icon.show()
-
-# sys.exit(app.exec_())
-
 import sys
+import os
+import pyperclip
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QTextEdit, QComboBox, QVBoxLayout,
-    QSystemTrayIcon, QMenu, QAction
+    QPushButton, QHBoxLayout, QMenu
 )
-from PyQt5.QtGui import QIcon, QFont, QPixmap
-from PyQt5.QtCore import Qt, QTimer
-from googletrans import Translator
-import pyperclip
+from PyQt5.QtCore import Qt, QTimer, QPoint, QEvent
+from PyQt5.QtGui import QFont, QPainter, QColor, QPen, QRegion
+from deep_translator import GoogleTranslator
 
-class RealTimeTranslator(QWidget):
+
+
+# -------------------- Floating Draggable Circular Icon --------------------
+class MiniIcon(QWidget):
+    """Black circular icon with 'A' that opens the translator/chat popup"""
+    def __init__(self, translator_popup):
+        super().__init__()
+        self.translator_popup = translator_popup
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
+        self.setGeometry(1300, 700, 50, 50)
+        self.setStyleSheet("background: transparent;")
+        self.old_pos = None  # for dragging
+        self.setMask(QRegion(0, 0, 50, 50, QRegion.Ellipse))
+        self.show()
+
+        # Right-click menu to exit
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+
+    def show_context_menu(self, pos):
+        menu = QMenu()
+        exit_action = menu.addAction("Exit Bot")
+        action = menu.exec_(self.mapToGlobal(pos))
+        if action == exit_action:
+            QApplication.quit()  # Exit app completely
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            # Open popup near the icon
+            icon_geo = self.geometry()
+            self.translator_popup.move(icon_geo.x() - 250, icon_geo.y() - 50)  # Popup appears near icon
+            self.translator_popup.show()
+            self.old_pos = event.globalPos()
+        elif event.button() == Qt.RightButton:
+            self.show_context_menu(event.pos())
+
+    def mouseMoveEvent(self, event):
+        if self.old_pos:
+            delta = QPoint(event.globalPos() - self.old_pos)
+            self.move(self.x() + delta.x(), self.y() + delta.y())
+            self.old_pos = event.globalPos()
+
+    def mouseReleaseEvent(self, event):
+        self.old_pos = None
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor(0, 0, 0))  # Black circle
+        painter.setPen(QPen(Qt.black))
+        painter.drawEllipse(0, 0, 50, 50)
+
+        painter.setPen(QPen(Qt.white))
+        font = QFont("Arial", 20, QFont.Bold)
+        painter.setFont(font)
+        painter.drawText(self.rect(), Qt.AlignCenter, "A")
+
+
+# -------------------- Translator/Chat Popup --------------------
+class MiniTranslator(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
-        self.setMinimumSize(300, 150)
-        self.setWindowTitle("Mini Translator")
 
-        self.translator = Translator()
-        self.last_clipboard = ""
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        self.setGeometry(1100, 400, 300, 250)
+        self.setStyleSheet("""
+            background-color: #1e1e2f;
+            border-radius: 12px;
+            border: 2px solid #6a11cb;
+        """)
+        self.old_pos = None  # for dragging
 
-        # Clipboard timer
-        self.clipboard_timer = QTimer()
-        self.clipboard_timer.timeout.connect(self.check_clipboard)
+        # ---------------- Buttons ----------------
+        self.close_btn = QPushButton("✕")
+        self.close_btn.setFixedSize(25, 25)
+        self.close_btn.setStyleSheet("color:white; background: #ff4c4c; border:none;")
+        self.close_btn.clicked.connect(self.hide)
 
-        # Roboto font
-        self.roboto_font = QFont("Roboto", 10)
+        self.minimize_btn = QPushButton("—")
+        self.minimize_btn.setFixedSize(25, 25)
+        self.minimize_btn.setStyleSheet("color:white; background: #4c6aff; border:none;")
+        self.minimize_btn.clicked.connect(self.showMinimized)
 
-        # Language selection
-        self.lang_combo = QComboBox()
-        self.lang_combo.addItems(["en", "hi", "fr", "de", "es", "zh-cn", "ja"])
-        self.lang_combo.setCurrentText("hi")
-        self.lang_combo.setFont(self.roboto_font)
-        self.lang_combo.currentIndexChanged.connect(self.update_translation)
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setFixedSize(50,25)
+        self.clear_btn.setStyleSheet("color:white; background: #00c853; border:none;")
+        self.clear_btn.clicked.connect(lambda: self.text_area.clear())
 
-        # Output text
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        self.output_text.setFont(self.roboto_font)
-        self.output_text.setStyleSheet(
-            "background-color: #f0f0f0; border: 1px solid #ccc; padding: 4px;"
-        )
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.clear_btn)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.minimize_btn)
+        btn_layout.addWidget(self.close_btn)
+        btn_layout.setContentsMargins(5,5,5,5)
 
-        # Layout
+        # ---------------- Language Selection & Text Area ----------------
+        self.language_box = QComboBox()
+        self.language_box.addItems(["hi", "en", "es", "fr", "de", "zh", "ar"])
+        self.language_box.setStyleSheet("background-color: #6a11cb; color:white; border-radius:5px; padding:2px;")
+        self.language_box.currentIndexChanged.connect(self.translate_last_text)
+
+        self.text_area = QTextEdit()
+        self.text_area.setReadOnly(True)
+        self.text_area.setStyleSheet("""
+            background-color: #2b2b3f;
+            color:white;
+            border-radius:5px;
+        """)
+
+        # ---------------- Layout ----------------
         layout = QVBoxLayout()
+        layout.addLayout(btn_layout)
+        layout.addWidget(self.language_box)
+        layout.addWidget(self.text_area)
         layout.setContentsMargins(5,5,5,5)
-        layout.addWidget(self.lang_combo)
-        layout.addWidget(self.output_text)
         self.setLayout(layout)
 
-        # Store current clipboard text
-        self.current_text = ""
+        # ---------------- Clipboard Monitoring ----------------
+        self.last_text = ""
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_clipboard)
+        self.timer.start(500)
 
-    # Clipboard monitor
+    # ---------------- Drag Events ----------------
+    def mouseMoveEvent(self, event):
+        if self.old_pos:
+            delta = QPoint(event.globalPos() - self.old_pos)
+            self.move(self.x() + delta.x(), self.y() + delta.y())
+            self.old_pos = event.globalPos()
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.old_pos = event.globalPos()
+    def mouseReleaseEvent(self, event):
+        self.old_pos = None
+
+    # ---------------- Clipboard & Translation ----------------
     def check_clipboard(self):
-        try:
-            clipboard_text = pyperclip.paste().strip()
-        except:
-            return
-        if clipboard_text and clipboard_text != self.last_clipboard:
-            self.last_clipboard = clipboard_text
-            self.current_text = clipboard_text
-            self.translate_text(clipboard_text)
+        text = pyperclip.paste()
+        if text != self.last_text:
+            self.last_text = text
+            self.translate_text(text)
+
+    def translate_last_text(self):
+        if self.last_text:
+            self.translate_text(self.last_text)
 
     def translate_text(self, text):
-        lang = self.lang_combo.currentText()
         try:
-            translated = self.translator.translate(text, dest=lang)
-            self.output_text.setPlainText(translated.text)
+            target_lang = self.language_box.currentText()
+            translated = GoogleTranslator(source='auto', target=target_lang).translate(text)
+            self.text_area.setText(translated)
         except Exception as e:
-            self.output_text.setPlainText(f"Error: {e}")
-
-    # Called when language selection changes
-    def update_translation(self):
-        if self.current_text:
-            self.translate_text(self.current_text)
-
-    # Show popup and start clipboard monitoring
-    def popup(self):
-        self.show()
-        self.clipboard_timer.start(500)
-
-    # Hide popup and stop monitoring
-    def hide_popup(self):
-        self.clipboard_timer.stop()
-        self.hide()
+            self.text_area.setText(f"Error: {e}")
 
 
-# Main
-app = QApplication(sys.argv)
-app.setQuitOnLastWindowClosed(False)
+# -------------------- Main --------------------
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
 
-# System tray icon
-pixmap = QPixmap(32,32)
-pixmap.fill(Qt.transparent)
-icon = QIcon("translator.png")  # place your small attractive PNG icon
-if icon.isNull():
-    pixmap.fill(Qt.blue)
-    icon = QIcon(pixmap)
+    translator_popup = MiniTranslator()
+    icon = MiniIcon(translator_popup)
 
-tray_icon = QSystemTrayIcon(icon, app)
-menu = QMenu()
+    sys.exit(app.exec_())
 
-translator_popup = RealTimeTranslator()
-
-# Tray menu actions
-show_action = QAction("Open Translator")
-show_action.triggered.connect(translator_popup.popup)
-menu.addAction(show_action)
-
-hide_action = QAction("Hide Translator")
-hide_action.triggered.connect(translator_popup.hide_popup)
-menu.addAction(hide_action)
-
-quit_action = QAction("Quit")
-quit_action.triggered.connect(app.quit)
-menu.addAction(quit_action)
-
-tray_icon.setContextMenu(menu)
-tray_icon.show()
-
-sys.exit(app.exec_())
+ 
