@@ -1,16 +1,14 @@
 import sys
-import os
 import pyperclip
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QTextEdit, QComboBox, QVBoxLayout,
-    QPushButton, QHBoxLayout, QMenu
+    QPushButton, QHBoxLayout, QMenu, QCheckBox
 )
-from PyQt5.QtCore import Qt, QTimer, QPoint, QEvent
+from PyQt5.QtCore import Qt, QTimer, QPoint
 from PyQt5.QtGui import QFont, QPainter, QColor, QPen, QRegion
 from deep_translator import GoogleTranslator
+import ollama
 
-if not os.environ.get("DISPLAY"):
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 # -------------------- Floating Draggable Circular Icon --------------------
 class MiniIcon(QWidget):
@@ -21,7 +19,7 @@ class MiniIcon(QWidget):
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
         self.setGeometry(1300, 700, 50, 50)
         self.setStyleSheet("background: transparent;")
-        self.old_pos = None  # for dragging
+        self.old_pos = None
         self.setMask(QRegion(0, 0, 50, 50, QRegion.Ellipse))
         self.show()
 
@@ -34,13 +32,12 @@ class MiniIcon(QWidget):
         exit_action = menu.addAction("Exit Bot")
         action = menu.exec_(self.mapToGlobal(pos))
         if action == exit_action:
-            QApplication.quit()  # Exit app completely
+            QApplication.quit()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            # Open popup near the icon
             icon_geo = self.geometry()
-            self.translator_popup.move(icon_geo.x() - 250, icon_geo.y() - 50)  # Popup appears near icon
+            self.translator_popup.move(icon_geo.x() - 250, icon_geo.y() - 50)
             self.translator_popup.show()
             self.old_pos = event.globalPos()
         elif event.button() == Qt.RightButton:
@@ -58,7 +55,7 @@ class MiniIcon(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor(0, 0, 0))  # Black circle
+        painter.setBrush(QColor(0, 0, 0))
         painter.setPen(QPen(Qt.black))
         painter.drawEllipse(0, 0, 50, 50)
 
@@ -74,13 +71,13 @@ class MiniTranslator(QWidget):
         super().__init__()
 
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        self.setGeometry(1100, 400, 300, 250)
+        self.setGeometry(1100, 400, 300, 280)
         self.setStyleSheet("""
             background-color: #1e1e2f;
             border-radius: 12px;
             border: 2px solid #6a11cb;
         """)
-        self.old_pos = None  # for dragging
+        self.old_pos = None
 
         # ---------------- Buttons ----------------
         self.close_btn = QPushButton("✕")
@@ -94,7 +91,7 @@ class MiniTranslator(QWidget):
         self.minimize_btn.clicked.connect(self.showMinimized)
 
         self.clear_btn = QPushButton("Clear")
-        self.clear_btn.setFixedSize(50,25)
+        self.clear_btn.setFixedSize(50, 25)
         self.clear_btn.setStyleSheet("color:white; background: #00c853; border:none;")
         self.clear_btn.clicked.connect(lambda: self.text_area.clear())
 
@@ -103,13 +100,18 @@ class MiniTranslator(QWidget):
         btn_layout.addStretch()
         btn_layout.addWidget(self.minimize_btn)
         btn_layout.addWidget(self.close_btn)
-        btn_layout.setContentsMargins(5,5,5,5)
+        btn_layout.setContentsMargins(5, 5, 5, 5)
 
         # ---------------- Language Selection & Text Area ----------------
         self.language_box = QComboBox()
         self.language_box.addItems(["hi", "en", "es", "fr", "de", "zh", "ar"])
         self.language_box.setStyleSheet("background-color: #6a11cb; color:white; border-radius:5px; padding:2px;")
         self.language_box.currentIndexChanged.connect(self.translate_last_text)
+
+        # ---------------- Ollama Toggle ----------------
+        self.ollama_checkbox = QCheckBox("Use Ollama")
+        self.ollama_checkbox.setStyleSheet("color:white;")
+        self.ollama_checkbox.stateChanged.connect(self.translate_last_text)
 
         self.text_area = QTextEdit()
         self.text_area.setReadOnly(True)
@@ -119,12 +121,12 @@ class MiniTranslator(QWidget):
             border-radius:5px;
         """)
 
-        # ---------------- Layout ----------------
         layout = QVBoxLayout()
         layout.addLayout(btn_layout)
         layout.addWidget(self.language_box)
+        layout.addWidget(self.ollama_checkbox)
         layout.addWidget(self.text_area)
-        layout.setContentsMargins(5,5,5,5)
+        layout.setContentsMargins(5, 5, 5, 5)
         self.setLayout(layout)
 
         # ---------------- Clipboard Monitoring ----------------
@@ -157,12 +159,24 @@ class MiniTranslator(QWidget):
             self.translate_text(self.last_text)
 
     def translate_text(self, text):
+        target_lang = self.language_box.currentText()
         try:
-            target_lang = self.language_box.currentText()
-            translated = GoogleTranslator(source='auto', target=target_lang).translate(text)
+            if self.ollama_checkbox.isChecked():
+                # Use Ollama
+                prompt = f"Translate the following text into {target_lang}: {text}"
+                response = ollama.chat(
+                    model="gemma3",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                translated = response["message"]["content"]
+            else:
+                # Use GoogleTranslator
+                translated = GoogleTranslator(source='auto', target=target_lang).translate(text)
+
             self.text_area.setText(translated)
+
         except Exception as e:
-            self.text_area.setText(f"Error: {e}")
+            self.text_area.setText(f"Translation Error: {e}")
 
 
 # -------------------- Main --------------------
@@ -173,5 +187,3 @@ if __name__ == "__main__":
     icon = MiniIcon(translator_popup)
 
     sys.exit(app.exec_())
-
- 
