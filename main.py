@@ -9,7 +9,8 @@ from PyQt5.QtCore import Qt, QTimer, QPoint, QEvent
 from PyQt5.QtGui import QFont, QPainter, QColor, QPen, QRegion
 from deep_translator import GoogleTranslator
 
-
+if not os.environ.get("DISPLAY"):
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 # -------------------- Floating Draggable Circular Icon --------------------
 class MiniIcon(QWidget):
